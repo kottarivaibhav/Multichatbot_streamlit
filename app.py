@@ -16,11 +16,18 @@ st.set_page_config(
 @st.cache_resource
 def setup_client():
     """Loads environment variables and sets up the Gemini client."""
-    load_dotenv()
-    api_key = os.getenv("GOOGLE_API_KEY")
+    try:
+        # Try to get API key from Streamlit secrets first (for cloud deployment)
+        api_key = st.secrets["GOOGLE_API_KEY"]
+    except (KeyError, FileNotFoundError):
+        # Fallback to environment variable (for local development)
+        load_dotenv()
+        api_key = os.getenv("GOOGLE_API_KEY")
+    
     if not api_key:
-        st.error("⚠️ GOOGLE_API_KEY not found in .env file.")
+        st.error("⚠️ GOOGLE_API_KEY not found. Please add it to Streamlit secrets or .env file.")
         st.stop()
+    
     return genai.Client(api_key=api_key)
 
 # --- Core Functions ---
@@ -150,6 +157,10 @@ def main():
             st.session_state.chat_history = []
             st.session_state.chat_session = None
         
+        # Initialize chat message input state
+        if "chat_message_input" not in st.session_state:
+            st.session_state.chat_message_input = ""
+        
         # Initialize chat session
         if st.session_state.chat_session is None:
             try:
@@ -167,10 +178,11 @@ def main():
                 st.markdown(f"**🤖 Bot:** {bot_msg}")
                 st.markdown("---")
         
-        # Chat input
+        # Chat input with session state control
         user_message = st.text_input(
             "Type your message:",
-            key="chat_input"
+            key="chat_input",
+            value=st.session_state.chat_message_input
         )
         
         col1, col2 = st.columns([1, 1])
@@ -197,12 +209,12 @@ def main():
                             (user_message, response_text)
                         )
                         
-                        # Clear the input field
-                        if "chat_input" in st.session_state:
-                            del st.session_state["chat_input"]
-                        st.rerun()
                     except Exception as e:
                         st.error(f"❌ Error: {e}")
+                    
+                    # Clear the input field (outside try block so it always executes)
+                    st.session_state.chat_message_input = ""
+                    st.rerun()
                 else:
                     st.warning("⚠️ Please enter a message first!")
         
@@ -210,11 +222,8 @@ def main():
             if st.button("🗑️ Clear Chat"):
                 st.session_state.chat_history = []
                 st.session_state.chat_session = None
-                # Also clear the input field
-                if "chat_input" in st.session_state:
-                    del st.session_state["chat_input"]
-                st.rerun() 
-        # Feature 3: Image Analysis
+                st.session_state.chat_message_input = ""  # Clear input as well
+                st.rerun()
     elif app_mode == "🖼️ Image Analysis":
         st.header("🖼️ Image Analysis")
         st.markdown("Upload an image and ask questions about it!")
