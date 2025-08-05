@@ -1,0 +1,208 @@
+import streamlit as st
+from google import genai
+import os
+from dotenv import load_dotenv
+from PIL import Image
+
+# --- Streamlit Configuration ---
+st.set_page_config(
+    page_title="MultiBot - AI Assistant",
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# --- Client Setup ---
+@st.cache_resource
+def setup_client():
+    """Loads environment variables and sets up the Gemini client."""
+    load_dotenv()
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        st.error("⚠️ GOOGLE_API_KEY not found in .env file.")
+        st.stop()
+    return genai.Client(api_key=api_key)
+
+# --- Core Functions ---
+def get_text_response(client, user_input):
+    """Get a single text response from Gemini."""
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", 
+            contents=user_input
+        )
+        return response.text
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+        
+
+def analyze_image(client, image, prompt):
+    """Analyze an uploaded image with Gemini."""
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=[prompt, image]
+        )
+        return response.text
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+# --- Main Streamlit App ---
+def main():
+    # Initialize client
+    client = setup_client()
+    
+    # App Header
+    st.title("🤖 MultiBot - AI Assistant")
+    st.markdown("---")
+    
+    # Sidebar for navigation
+    st.sidebar.title("🚀 Features")
+    app_mode = st.sidebar.selectbox(
+        "Choose a feature:",
+        ["💬 Text Chat", "🔄 Conversation", "🖼️ Image Analysis"]
+    )
+    
+    # Feature 1: Simple Text Response
+    if app_mode == "💬 Text Chat":
+        st.header("💬 Get Text Response for a single query")
+        st.markdown("Ask me anything and get an instant response!")
+        
+        user_input = st.text_area(
+            "Enter your prompt:",
+            placeholder="Type your question here...",
+            height=50
+        )
+        
+        if st.button("🚀 Generate Response", type="primary"):
+            if user_input.strip():
+                with st.spinner("🤔 Thinking..."):
+                    response = get_text_response(client, user_input)
+                
+                st.write("✅ Response generated!")
+                st.markdown("### 🤖 AI Response:")
+                st.markdown(response)
+            else:
+                st.warning("⚠️ Please enter a prompt first!")
+    
+    # Feature 2: Interactive Chat
+    elif app_mode == "🔄 Conversation":
+        st.header("🔄 Interactive Chat")
+        st.markdown("Have a continuous conversation with the AI!")
+        
+        # Initialize chat history
+        if "chat_history" not in st.session_state:
+            st.session_state.chat_history = []
+            st.session_state.chat_session = None
+
+        if "chat_message_input" not in st.session_state:
+            st.session_state.chat_message_input = ""    
+        
+            
+        
+        # Initialize chat session
+        if st.session_state.chat_session is None:
+            try:
+                st.session_state.chat_session = client.chats.create(model='gemini-2.5-flash')
+                st.success("✅ New chat session started!")
+            except Exception as e:
+                st.error(f"❌ Error creating chat session: {e}")
+                st.stop()
+        
+        # Display chat history
+        if st.session_state.chat_history:
+            st.markdown("### 💬 Chat History:")
+            for i, (user_msg, bot_msg) in enumerate(st.session_state.chat_history):
+                st.markdown(f"**You:** {user_msg}")
+                st.markdown(f"**🤖 Bot:** {bot_msg}")
+                st.markdown("---")
+        
+        # Chat input
+        user_message = st.text_input(
+            "Type your message:",
+           
+            key="chat_input",
+            value=st.session_state.chat_message_input
+        )
+        
+        col1, col2 = st.columns([1, 1])
+        
+        with col1:
+            if st.button("📤 Send Message", type="primary"):
+                if user_message.strip():
+                    try:
+                        with st.spinner("🤔 AI is thinking..."):
+                            response = st.session_state.chat_session.send_message(
+                                message=user_message
+                            )
+                        
+                        # Add to chat history
+                        st.session_state.chat_history.append(
+                            (user_message, response.text)
+                        )
+                        
+                        # Clear the input field
+                        st.session_state.chat_message_input = ""
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error: {e}")
+                else:
+                    st.warning("⚠️ Please enter a message first!")
+        
+        with col2:
+            if st.button("🗑️ Clear Chat"):
+                st.session_state.chat_history = []
+                st.session_state.chat_session = None
+                
+                st.rerun()
+    
+    # Feature 3: Image Analysis
+    elif app_mode == "🖼️ Image Analysis":
+        st.header("🖼️ Image Analysis")
+        st.markdown("Upload an image and ask questions about it!")
+        
+        uploaded_file = st.file_uploader(
+            "Choose an image file:",
+            type=['png', 'jpg', 'jpeg', 'gif', 'bmp'],
+            help="Upload an image to analyze"
+        )
+        
+        if uploaded_file is not None:
+            # Display uploaded image
+            image = Image.open(uploaded_file)
+            st.image(image, caption="Uploaded Image", use_column_width=True)
+            
+            # Prompt for image analysis
+            image_prompt = st.text_area(
+                "What would you like to know about this image?",
+                placeholder="Describe what you see, identify objects, analyze the scene, etc.",
+                height=100
+            )
+            
+            if st.button("🔍 Analyze Image", type="primary"):
+                if image_prompt.strip():
+                    with st.spinner("🔍 Analyzing image..."):
+                        response = analyze_image(client, image, image_prompt)
+                    
+                    st.success("✅ Analysis complete!")
+                    st.markdown("### 🤖 AI Analysis:")
+                    st.markdown(response)
+                else:
+                    st.warning("⚠️ Please enter a prompt for image analysis!")
+    
+    # Footer
+    st.markdown("---")
+    st.markdown(
+        """
+        <div style='text-align: center; color: #666; padding: 20px;'>
+            🤖 MultiBot powered by Google Gemini AI<br>
+           © Built by Vaibhav Kottari
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+# --- Run the App ---
+if __name__ == "__main__":
+    main()
