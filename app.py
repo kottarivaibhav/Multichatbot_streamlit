@@ -237,7 +237,7 @@ def main():
         if uploaded_file is not None:
             # Display uploaded image
             image = Image.open(uploaded_file)
-            st.image(image, caption="Uploaded Image", use_column_width=True)
+            st.image(image, caption="Uploaded Image", width=400)
             
             # Prompt for image analysis
             image_prompt = st.text_area(
